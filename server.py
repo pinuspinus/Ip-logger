@@ -4,13 +4,13 @@ from cryptography.fernet import Fernet
 import httpx
 import json
 from datetime import datetime
-from config import SECRET_KEY, BOT_TOKEN
+from config import SECRET_KEY, BOT_TOKEN, VPNAPI_KEY
 import user_agents
 
 app = FastAPI()
 cipher = Fernet(SECRET_KEY)
 
-IPINFO_TOKEN = ""  # Можно оставить пустым, тогда ipinfo даст только базовые данные
+IPINFO_TOKEN = ""  # Можно оставить пустым
 
 
 @app.get("/link/{encrypted_url}")
@@ -27,7 +27,7 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
 
     # Определяем IP
     ip = request.headers.get("x-forwarded-for", request.client.host)
-    if ip and "," in ip:  # может быть несколько через запятую
+    if ip and "," in ip:
         ip = ip.split(",")[0].strip()
 
     # Заголовки
@@ -61,7 +61,7 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
         except Exception as e:
             print("Ошибка geo:", e)
 
-        # ASN, org, timezone через ipinfo.io
+        # ASN/org/timezone через ipinfo.io
         try:
             url = f"https://ipinfo.io/{ip}/json"
             if IPINFO_TOKEN:
@@ -78,20 +78,23 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
         except Exception as e:
             print("Ошибка ipinfo:", e)
 
-        # VPN/Proxy/Tor через ipapi.is
+        # VPN/Proxy/Tor через VPNAPI.io
         try:
-            vpn_resp = await client.get(f"https://ipapi.is/?ip={ip}", timeout=5.0)
+            vpn_resp = await client.get(
+                f"https://vpnapi.io/api/{ip}?key={VPNAPI_KEY}",
+                timeout=5.0
+            )
             if vpn_resp.status_code == 200:
                 vdata = vpn_resp.json()
                 vpn_info.update({
-                    "vpn": vdata.get("is_vpn", "N/A"),
-                    "proxy": vdata.get("is_proxy", "N/A"),
-                    "tor": vdata.get("is_tor", "N/A"),
+                    "vpn": vdata.get("security", {}).get("vpn", "N/A"),
+                    "proxy": vdata.get("security", {}).get("proxy", "N/A"),
+                    "tor": vdata.get("security", {}).get("tor", "N/A"),
                 })
         except Exception as e:
-            print("Ошибка ipapi.is:", e)
+            print("Ошибка VPNAPI.io:", e)
 
-    # Формируем сообщение (HTML, чтобы избежать крашей на Markdown)
+    # Формируем сообщение (HTML)
     msg_text = f"""
 <b>🔗 Кто-то кликнул по твоей ссылке!</b>
 

@@ -6,3 +6,4 @@ SERVER_URL = "https://unfortunate-mandi-petprojects1-b97eb276.koyeb.app"# Ток
 BOT_TOKEN = "8119199682:AAF47W8rc0VgC6wDHfBhvAHcFC_lhO02gTA"
 IPQS_TOKEN = "<KEY>"
 IPINFO_TOKEN = "<KEY>"
+VPNAPI_KEY = "31fae3047aed4d8e9fcdae9ab1c98c0e"
