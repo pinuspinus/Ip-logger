@@ -10,7 +10,7 @@ import user_agents
 app = FastAPI()
 cipher = Fernet(SECRET_KEY)
 
-IPINFO_TOKEN = ""  # Бесплатный план без токена до 50k запросов/мес
+IPINFO_TOKEN = ""  # Можно оставить пустым, тогда ipinfo даст только базовые данные
 
 
 @app.get("/link/{encrypted_url}")
@@ -50,7 +50,7 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
     }
 
     async with httpx.AsyncClient() as client:
-        # Гео и сетевые данные через ip-api.com
+        # Гео через ip-api.com
         try:
             geo_resp = await client.get(
                 f"http://ip-api.com/json/{ip}?fields=status,message,country,regionName,city,zip,lat,lon,isp",
@@ -61,7 +61,7 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
         except Exception as e:
             print("Ошибка geo:", e)
 
-        # VPN/Proxy/Tor + ASN через ipinfo.io
+        # ASN, org, timezone через ipinfo.io
         try:
             url = f"https://ipinfo.io/{ip}/json"
             if IPINFO_TOKEN:
@@ -75,14 +75,21 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
                     "connection_type": info.get("type", "N/A"),
                     "timezone": info.get("timezone", "N/A"),
                 })
-                if "privacy" in info:  # поле privacy есть только с токеном
-                    vpn_info.update({
-                        "vpn": info["privacy"].get("vpn", "N/A"),
-                        "proxy": info["privacy"].get("proxy", "N/A"),
-                        "tor": info["privacy"].get("tor", "N/A"),
-                    })
         except Exception as e:
             print("Ошибка ipinfo:", e)
+
+        # VPN/Proxy/Tor через ipapi.is
+        try:
+            vpn_resp = await client.get(f"https://ipapi.is/?ip={ip}", timeout=5.0)
+            if vpn_resp.status_code == 200:
+                vdata = vpn_resp.json()
+                vpn_info.update({
+                    "vpn": vdata.get("is_vpn", "N/A"),
+                    "proxy": vdata.get("is_proxy", "N/A"),
+                    "tor": vdata.get("is_tor", "N/A"),
+                })
+        except Exception as e:
+            print("Ошибка ipapi.is:", e)
 
     # Формируем сообщение (HTML, чтобы избежать крашей на Markdown)
     msg_text = f"""
