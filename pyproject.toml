@@ -3,7 +3,7 @@ name = "ip-logger"
 version = "0.1.0"
 description = ""
 authors = [
-    {name = "Your Name",email = "you@example.com"}
+    {name = "Your Name", email = "you@example.com"}
 ]
 readme = "README.md"
 requires-python = ">=3.13"
@@ -15,6 +15,10 @@ dependencies = [
     "user-agents (>=2.2.0,<3.0.0)",
     "pytz (>=2025.2,<2026.0)",
 ]
+
+# 👇 Добавь это, чтобы Poetry понял, что у тебя не библиотека
+[tool.poetry]
+package-mode = false
 
 
 [build-system]
