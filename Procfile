@@ -1,1 +1,1 @@
-web: poetry run start
+web: bash -c "python main.py"
