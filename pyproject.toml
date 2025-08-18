@@ -1,24 +1,25 @@
-[tool.poetry]
+[project]
 name = "ip-logger"
 version = "0.1.0"
-description = "FastAPI + Telegram bot project"
-authors = ["Chiki Piki <workli@gmail.com>"]
-# Указываем, что это приложение, а не библиотека
-packages = [{include = "server"}]  # заменяй на корневую папку твоих модулей, если нужно
+description = ""
+authors = [
+    {name = "Your Name", email = "you@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aiogram (>=3.21.0,<4.0.0)",
+    "cryptography (>=45.0.6,<46.0.0)",
+    "uvicorn (>=0.35.0,<0.36.0)",
+    "fastapi (>=0.116.1,<0.117.0)",
+    "user-agents (>=2.2.0,<3.0.0)",
+    "pytz (>=2025.2,<2026.0)",
+    "httpx (>=0.25.0,<1.0.0)"
+]
 
-[tool.poetry.dependencies]
-python = ">=3.13"
-aiogram = ">=3.21.0,<4.0.0"
-cryptography = ">=45.0.6,<46.0.0"
-uvicorn = ">=0.35.0,<0.36.0"
-fastapi = ">=0.116.1,<0.117.0"
-user-agents = ">=2.2.0,<3.0.0"
-pytz = ">=2025.2,<2026.0"
-httpx = ">=0.25.0,<1.0.0"
-
-[tool.poetry.scripts]
-# Точка входа для Koyeb
-start = "main:start"
+[tool.poetry]
+# Указываем явно, что пакетов нет, чтобы Poetry не пытался ставить их как библиотеку
+packages = []
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
