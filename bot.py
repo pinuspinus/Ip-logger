@@ -16,10 +16,21 @@ async def start(msg: types.Message):
 async def generate_short_link(msg: types.Message):
     original_url = msg.text
     try:
-        data = {"url": original_url, "user_id": msg.from_user.id}
+        from datetime import datetime, timedelta
+
+        # Время жизни ссылки — 24 часа
+        expires_timestamp = (datetime.utcnow() + timedelta(minutes=1)).timestamp()
+
+        data = {
+            "url": original_url,
+            "user_id": msg.from_user.id,
+            "expires": expires_timestamp  # поле с временем жизни
+        }
+
         encrypted_data = cipher.encrypt(json.dumps(data).encode()).decode()
         short_link = f"{SERVER_URL}/link/{encrypted_data}"
-        await msg.reply(f"Твоя ссылка: {short_link}")
+        await msg.reply(f"Твоя ссылка (действует 24 часа): {short_link}")
+
     except Exception as e:
         await msg.reply(f"Ошибка: {e}")
 
