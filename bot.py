@@ -19,6 +19,18 @@ main_menu = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
+
+# Отправка приветственного "сервисного" сообщения при добавлении пользователя
+@dp.my_chat_member()
+async def on_user_start(event: types.ChatMemberUpdated):
+    if event.new_chat_member.status == "member":  # новый пользователь
+        chat_id = event.chat.id
+        await bot.send_message(
+            chat_id,
+            "What can this bot do?\n"
+            "Ip Logger - сервис для незаметного получения IP адреса своих 'друзей'\n"
+        )
+
 @dp.message(Command("start"))
 async def start(msg: types.Message):
     await msg.reply(

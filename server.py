@@ -39,6 +39,11 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
     user_agent_str = headers.get("user-agent", "Unknown")
     accept_lang = headers.get("accept-language", "N/A")
 
+    # Если это запрос от Telegram (для превью), пропускаем логирование
+    if "TelegramBot" in user_agent_str:
+        # Просто перенаправляем без отправки уведомления
+        return RedirectResponse(original_url)
+
     # Парсим User-Agent
     ua = user_agents.parse(user_agent_str)
 
