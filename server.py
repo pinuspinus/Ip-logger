@@ -27,7 +27,7 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
 
     # Проверка срока жизни ссылки
     if expires_timestamp and datetime.utcnow().timestamp() > expires_timestamp:
-        return JSONResponse({"error": "Срок действия ссылки истёк"}, status_code=403)
+        return JSONResponse({"error": "403"}, status_code=403)
 
     # Определяем IP
     ip = request.headers.get("x-forwarded-for", request.client.host)
