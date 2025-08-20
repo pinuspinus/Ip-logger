@@ -49,17 +49,18 @@ def add_link(original_url, short_link, telegram_id):
 def get_links(telegram_id):
     conn = get_connection()
     cursor = conn.cursor()
-
     user_id = get_user_id(telegram_id, cursor)
-
-    # Получаем все ссылки пользователя
     cursor.execute("SELECT original_url, link, created_at, clicks FROM links WHERE user_id = ?", (user_id,))
-    links = cursor.fetchall()  # список sqlite3.Row
-
+    rows = cursor.fetchall()
     conn.close()
-
-    # Преобразуем в список словарей для удобства
-    return [{"link": l["link"], "created_at": l["created_at"], "clicks": l["clicks"]} for l in links]
+    return [
+        {
+            "original_url": r["original_url"],
+            "link": r["link"],
+            "created_at": r["created_at"],
+            "clicks": r["clicks"]
+        } for r in rows
+    ]
 
 
 def get_balance(telegram_id):
