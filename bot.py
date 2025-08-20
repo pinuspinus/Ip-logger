@@ -111,7 +111,7 @@ async def my_links_callback(callback: types.CallbackQuery):
 
     await callback.message.edit_text(text, reply_markup=build_links_keyboard(page, total_pages))
 
-@dp.callback_query(Text("back_to_menu"))
+@dp.callback_query(lambda c: c.data.startswith("back_to_menu"))
 async def back_to_menu_callback(callback: types.CallbackQuery):
     await callback.message.edit_text(
         f"👋 {callback.from_user.first_name} 👋\n\nГлавное меню ⬇️",
