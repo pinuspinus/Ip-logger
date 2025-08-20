@@ -106,7 +106,7 @@ async def my_links_callback(callback: types.CallbackQuery):
             f"🌍 Оригинальная: {l.get('original_url', 'N/A')}\n"
             f"➡️ Короткая: {l.get('link', 'N/A')}\n"
             f"👀 Клики: {l.get('clicks', 0)}\n"
-            f"🕒 Создана: {l.get('created_at', 'N/A')}\n\n"
+            f"🕒 Создана: {l.get('created_at', 'N/A')} UTC\n\n"
         )
 
     await callback.message.edit_text(text, reply_markup=build_links_keyboard(page, total_pages))

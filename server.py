@@ -38,7 +38,7 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
 
     if not row:
         conn.close()
-        return JSONResponse({"error": "Ссылка не найдена"}, status_code=404)
+        return JSONResponse({"error": "link not found"}, status_code=404)
 
     clicks, max_clicks = row["clicks"], row["max_clicks"]
 
@@ -58,7 +58,7 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
                 )
         except Exception as e:
             print("Ошибка уведомления Telegram:", e)
-        return JSONResponse({"error": "Ссылка недоступна"}, status_code=403)
+        return JSONResponse({"error": "link doesn't acceptable"}, status_code=403)
 
     # Увеличиваем счётчик кликов
     cursor.execute("UPDATE links SET clicks = clicks + 1 WHERE link = ?", (encrypted_url,))
