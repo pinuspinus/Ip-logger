@@ -20,14 +20,9 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
         data = json.loads(data_json)
         original_url = data["url"]
         user_id = data["user_id"]
-        expires_timestamp = data.get("expires")
     except Exception as e:
         print("Ошибка при расшифровке ссылки:", e)
         return JSONResponse({"error": "Invalid link"}, status_code=400)
-
-    # Проверка срока жизни ссылки
-    if expires_timestamp and datetime.utcnow().timestamp() > expires_timestamp:
-        return JSONResponse({"error": "403"}, status_code=403)
 
     # Определяем IP
     ip = request.headers.get("x-forwarded-for", request.client.host)
