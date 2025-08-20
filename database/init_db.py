@@ -40,3 +40,8 @@ cursor.execute("""
 ALTER TABLE links
 ADD COLUMN max_clicks INTEGER DEFAULT 2;
 """)
+
+
+cursor.execute("""
+ALTER TABLE links ADD COLUMN original_url TEXT;
+""")

@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 from config import SECRET_KEY, BOT_TOKEN, VPNAPI_KEY
 import user_agents
+from database.db_api import get_connection  # функция для подключения к SQLite
 
 app = FastAPI()
 cipher = Fernet(SECRET_KEY)
@@ -29,14 +30,48 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
     if ip and "," in ip:
         ip = ip.split(",")[0].strip()
 
+    # Проверка и обновление кликов в БД
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT clicks, max_clicks FROM links WHERE link = ?", (encrypted_url,))
+    row = cursor.fetchone()
+
+    if not row:
+        conn.close()
+        return JSONResponse({"error": "Ссылка не найдена"}, status_code=404)
+
+    clicks, max_clicks = row["clicks"], row["max_clicks"]
+
+    # Если достигнут лимит
+    if clicks >= max_clicks:
+        conn.close()
+        # Уведомляем владельца
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                    data={
+                        "chat_id": user_id,
+                        "text": "🔗 Кто-то кликнул по твоей ссылке, но она уже истекла."
+                    },
+                    timeout=5.0
+                )
+        except Exception as e:
+            print("Ошибка уведомления Telegram:", e)
+        return JSONResponse({"error": "Ссылка недоступна"}, status_code=403)
+
+    # Увеличиваем счётчик кликов
+    cursor.execute("UPDATE links SET clicks = clicks + 1 WHERE link = ?", (encrypted_url,))
+    conn.commit()
+    conn.close()
+
     # Заголовки
     headers = request.headers
     user_agent_str = headers.get("user-agent", "Unknown")
     accept_lang = headers.get("accept-language", "N/A")
 
-    # Если это запрос от Telegram (для превью), пропускаем логирование
+    # Если это Telegram-превью, просто редиректим
     if "TelegramBot" in user_agent_str:
-        # Просто перенаправляем без отправки уведомления
         return RedirectResponse(original_url)
 
     # Парсим User-Agent
@@ -98,7 +133,7 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
         except Exception as e:
             print("Ошибка VPNAPI.io:", e)
 
-    # Формируем сообщение (HTML)
+    # Формируем сообщение
     msg_text = f"""
 <b>🔗 Кто-то кликнул по твоей ссылке!</b>
 
@@ -131,16 +166,14 @@ async def redirect_encrypted(request: Request, encrypted_url: str):
 - Tor: {vpn_info.get('tor')}
 """
 
-    # Отправка в Telegram
+    # Отправка уведомления в Telegram
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.post(
+            await client.post(
                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                 data={"chat_id": user_id, "text": msg_text, "parse_mode": "HTML"},
                 timeout=5.0
             )
-            if resp.status_code != 200:
-                print("Ошибка ответа от Telegram:", resp.text)
     except Exception as e:
         print("Ошибка отправки в Telegram:", e)
 

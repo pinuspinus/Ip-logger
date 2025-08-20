@@ -10,13 +10,14 @@ def get_connection():
 def add_user(telegram_id):
     conn = get_connection()
     cursor = conn.cursor()
+
     cursor.execute(
-        "INSERT INTO users (telegram_id) VALUES (?)",
+        "INSERT OR IGNORE INTO users (telegram_id) VALUES (?)",
         (telegram_id,)
     )
+
     conn.commit()
     conn.close()
-    return telegram_id
 
 
 def get_user_id(telegram_id, cursor):
@@ -28,27 +29,23 @@ def get_user_id(telegram_id, cursor):
     return None  # если пользователя нет
 
 
-def add_link(link, telegram_id):
+def add_link(original_url, short_link, telegram_id):
     conn = get_connection()
     cursor = conn.cursor()
 
-    # получаем id пользователя через переданный курсор
     user_id = get_user_id(telegram_id, cursor)
-
     if user_id is None:
         conn.close()
         return None  # пользователь не найден
 
-    # вставляем ссылку с привязкой к пользователю
     cursor.execute(
-        "INSERT INTO links (user_id, link) VALUES (?, ?)",
-        (user_id, link)
+        "INSERT INTO links (user_id, link, original_url) VALUES (?, ?, ?)",
+        (user_id, short_link, original_url)
     )
 
     conn.commit()
     conn.close()
-
-    return True  # успешная вставка
+    return True
 
 def get_links(telegram_id):
     conn = get_connection()
@@ -57,7 +54,7 @@ def get_links(telegram_id):
     user_id = get_user_id(telegram_id, cursor)
 
     # Получаем все ссылки пользователя
-    cursor.execute("SELECT link, created_at, clicks FROM links WHERE user_id = ?", (user_id,))
+    cursor.execute("SELECT original_url, link, created_at, clicks FROM links WHERE user_id = ?", (user_id,))
     links = cursor.fetchall()  # список sqlite3.Row
 
     conn.close()
