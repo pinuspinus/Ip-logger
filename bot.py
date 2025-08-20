@@ -81,10 +81,10 @@ def paginate_links(links, page: int):
 def build_links_keyboard(page: int, total_pages: int):
     buttons = []
     if page > 0:
-        buttons.append(InlineKeyboardButton("⬅️ Назад", callback_data=f"my_links:{page-1}"))
+        buttons.append(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"my_links:{page-1}"))
     if page < total_pages - 1:
-        buttons.append(InlineKeyboardButton("Вперёд ➡️", callback_data=f"my_links:{page+1}"))
-    buttons.append(InlineKeyboardButton("🏠 Меню", callback_data="back_to_menu"))
+        buttons.append(InlineKeyboardButton(text="Вперёд ➡️", callback_data=f"my_links:{page+1}"))
+    buttons.append(InlineKeyboardButton(text="🏠 Меню", callback_data="back_to_menu"))
     return InlineKeyboardMarkup(inline_keyboard=[buttons])
 
 @dp.callback_query(lambda c: c.data.startswith("my_links"))
@@ -111,7 +111,7 @@ async def my_links_callback(callback: types.CallbackQuery):
 
     await callback.message.edit_text(text, reply_markup=build_links_keyboard(page, total_pages))
 
-@dp.callback_query(lambda c: c.data.startswith("back_to_menu"))
+@dp.callback_query(lambda c: c.data == "back_to_menu")
 async def back_to_menu_callback(callback: types.CallbackQuery):
     await callback.message.edit_text(
         f"👋 {callback.from_user.first_name} 👋\n\nГлавное меню ⬇️",
@@ -120,7 +120,6 @@ async def back_to_menu_callback(callback: types.CallbackQuery):
     await callback.answer()
 
 async def main():
-    # Команды бота
     commands = [BotCommand(command="start", description="Запустить меню")]
     await bot.set_my_commands(commands)
     await dp.start_polling(bot)
