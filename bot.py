@@ -61,7 +61,7 @@ async def handle_url(msg: types.Message, state: FSMContext):
         short_link = f"{SERVER_URL}/link/{encrypted_data}"
 
         # сохраняем ссылку
-        if add_link(original_url, short_link, msg.from_user.id):
+        if add_link(original_url, encrypted_data, msg.from_user.id):
             await msg.reply(f"Твоя ссылка (доступен 1 переход): {short_link}")
         else:
             await msg.reply("Ошибка: не удалось сохранить ссылку. Попробуй еще раз.")
