@@ -104,8 +104,8 @@ async def my_links_callback(callback: types.CallbackQuery):
     for l in page_links:
         text += (
             f"🌍 Оригинальная: {l.get('original_url', 'N/A')}\n"
-            f"➡️ Короткая: {l.get('link', 'N/A')}\n"
-            f"👀 Клики: {l.get('clicks', 0)}\n"
+            f"➡️ Короткая: {SERVER_URL}/link/{l.get('link', 'N/A')}\n"            
+            f"👀 Клики: {l.get(int('clicks') - 1, '?')}\n"
             f"🕒 Создана: {l.get('created_at', 'N/A')} UTC\n\n"
         )
 
