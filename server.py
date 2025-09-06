@@ -104,7 +104,7 @@ async def redirect_link(request: Request, slug: str):
             return RedirectResponse(original_url)
 
         # лимит достигнут -> 403 + уведомление, клики НЕ инкрементим
-        if clicks >= max_clicks:
+        if clicks > max_clicks:
             chat_id = _get_telegram_id_by_user_id(user_db_id)
             if chat_id:
                 try:
