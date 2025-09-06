@@ -354,27 +354,23 @@ def _make_realistic_slug(link_id: int, noise_len: int = 8) -> str:
     noise = "".join(secrets.choice(ALPHABET62) for _ in range(noise_len))
     return core + noise
 
-import re, secrets, string
-from urllib.parse import urlsplit
-
-DOMAIN = "vrf.lat"  # твой основной домен
 
 def _make_short_host(original_url: str, noise_len: int = 6) -> str:
-    netloc = urlsplit(original_url).netloc.lower()
+    netloc = (urlsplit(original_url).netloc or "").lower()
 
-    # превращаем все точки и недопустимые символы в дефисы
+    # одна DNS-метка: точки -> дефисы, всё лишнее -> дефисы
     label = netloc.replace(".", "-")
     label = re.sub(r"[^a-z0-9-]", "-", label)
     label = re.sub(r"-+", "-", label).strip("-")
 
-    # ограничение 63 символа на DNS-метку — режем основу
-    base_max = 63 - 1 - noise_len  # дефис + шум
-    base = label[:max(1, base_max)]
+    # ограничение 63 символа на метку
+    base_max = max(1, 63 - 1 - noise_len)  # дефис + шум
+    base = label[:base_max]
 
     noise = "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(noise_len))
-    one_level_label = f"{base}-{noise}".strip("-")[:63]
+    one_label = f"{base}-{noise}".strip("-")[:63]
 
-    return f"{one_level_label}.{DOMAIN}"
+    return f"{one_label}.{DOMAIN}"
 
 def _save_link_with_slug(
     original_url: str,
@@ -382,27 +378,24 @@ def _save_link_with_slug(
     max_clicks: int = 1,
     short_host: str | None = None,
 ) -> Optional[str]:
-    """
-    Сохраняет ссылку; если short_host не передан — сгенерирует.
-    Возвращает slug или None.
-    """
-    conn = get_connection()
-    cur = conn.cursor()
+    conn = get_connection(); cur = conn.cursor()
     try:
         cur.execute("SELECT id FROM users WHERE id = ?", (user_id,))
         if not cur.fetchone():
             return None
 
-        # создаём черновую запись без slug/short_host
+        # черновик
         cur.execute(
             "INSERT INTO links (user_id, original_url, max_clicks, link, short_host) VALUES (?, ?, ?, ?, ?)",
             (user_id, original_url, max_clicks, "", ""),
         )
         link_id = cur.lastrowid
 
+        # ВАЖНО: вычисляем host ОДИН РАЗ
+        host = short_host or _make_short_host(original_url, noise_len=random.randint(5, 8))
+
         for _ in range(10):
             slug = _make_realistic_slug(link_id, noise_len=random.randint(8, 15))
-            host = short_host or _make_short_host(original_url, noise_len=random.randint(5, 8))
             try:
                 cur.execute(
                     "UPDATE links SET link = ?, short_host = ? WHERE id = ?",
@@ -411,10 +404,8 @@ def _save_link_with_slug(
                 conn.commit()
                 return slug
             except sqlite3.IntegrityError:
-                # коллизия slug или short_host — пробуем ещё раз
                 continue
 
-        # если не удалось — откатываем
         cur.execute("DELETE FROM links WHERE id = ?", (link_id,))
         conn.commit()
         return None
@@ -422,11 +413,8 @@ def _save_link_with_slug(
         conn.rollback()
         return None
     finally:
-        cur.close()
+        cur.close();
         conn.close()
-
-import re
-from urllib.parse import urlsplit
 
 _dns_allowed = re.compile(r"[a-z0-9-]")
 
@@ -565,10 +553,8 @@ async def handle_url(msg: types.Message, state: FSMContext):
         return
 
     # 3) генерим поддомен (с шумом) ОДИН РАЗ и будем хранить его в БД
-    # функция _build_host_from_url должна добавлять шум с дефисами, например:
-    # www.youtube.com.watch-abc-12d-9kq.vrf.lat
     try:
-        short_host = _build_host_from_url(original_url, DOMAIN)
+        short_host = _make_short_host(original_url)  # 👈 вместо _build_host_from_url
     except Exception as e:
         await msg.reply(f"❌ Не удалось сформировать короткий хост: {e}")
         await state.clear()
@@ -697,7 +683,7 @@ async def my_links_callback(callback: types.CallbackQuery):
         # короткий линк — через short_host, fallback на SERVER_URL
         slug = l.get("link", "") or ""
         short_host = (l.get("short_host") or "").strip()
-        short_url = f"https://{short_host}/link/{slug}"
+        short_url = f"{PREFERRED_SCHEME}://{short_host}/link/{slug}"  # 👈 без https: хардкода
 
         # экранируем для HTML
         orig = escape(l.get("original_url", "N/A"))
