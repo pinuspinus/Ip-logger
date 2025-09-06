@@ -115,7 +115,7 @@ cursor = conn.cursor()
 
 
 cursor.execute("""
-DELETE  FROM links;
+DELETE  FROM users;
 """)
 
 # сохраняем изменения и закрываем соединение
