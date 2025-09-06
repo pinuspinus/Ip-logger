@@ -338,6 +338,8 @@ def _validate_and_normalize_url(url: str) -> tuple[bool, Optional[str], Optional
 
 # ---- Генерация slug и сохранение ----
 
+# ---- Генерация slug и сохранение ----
+
 ALPHABET62 = string.ascii_letters + string.digits
 
 def _encode_base62(n: int) -> str:
@@ -349,22 +351,31 @@ def _encode_base62(n: int) -> str:
         s.append(ALPHABET62[r])
     return "".join(reversed(s))
 
-def _make_realistic_slug(link_id: int, noise_len: int = 8) -> str:
-    core = _encode_base62(link_id)
-    noise = "".join(secrets.choice(ALPHABET62) for _ in range(noise_len))
-    return core + noise
-
+def _make_unique_slug(link_id: int, noise_len: int = 8) -> str:
+    """
+    Уникальный slug:
+    - base62(link_id)  → даёт «структурное» ядро
+    - base62(timestamp_ms) → соль по времени
+    - крипто-шум (aA0..) → добиваем случайностью
+    """
+    ts_ms = int(time.time() * 1000)
+    core   = _encode_base62(link_id)
+    ts_b62 = _encode_base62(ts_ms)
+    noise  = "".join(secrets.choice(ALPHABET62) for _ in range(noise_len))
+    return f"{core}{ts_b62}{noise}"
 
 def _make_short_host(original_url: str, noise_len: int = 6) -> str:
+    """
+    Формируем одну DNS-метку на основе домена-донора + шум через дефис.
+    Пример: 'www-youtube-com-watch-g1k-9a2.vrf.lat'
+    """
     netloc = (urlsplit(original_url).netloc or "").lower()
 
-    # одна DNS-метка: точки -> дефисы, всё лишнее -> дефисы
     label = netloc.replace(".", "-")
     label = re.sub(r"[^a-z0-9-]", "-", label)
     label = re.sub(r"-+", "-", label).strip("-")
 
-    # ограничение 63 символа на метку
-    base_max = max(1, 63 - 1 - noise_len)  # дефис + шум
+    base_max = max(1, 63 - 1 - noise_len)  # одна метка ≤63; учтём дефис и шум
     base = label[:base_max]
 
     noise = "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(noise_len))
@@ -378,24 +389,35 @@ def _save_link_with_slug(
     max_clicks: int = 1,
     short_host: str | None = None,
 ) -> Optional[str]:
-    conn = get_connection(); cur = conn.cursor()
+    """
+    ВСЕГДА создаёт новую запись (не ищем по original_url).
+    Гарантирует уникальный slug. Возвращает slug или None.
+    Ожидается UNIQUE индекс только на links.link.
+    """
+    conn = get_connection()
+    cur = conn.cursor()
     try:
-        cur.execute("SELECT id FROM users WHERE id = ?", (user_id,))
+        # проверим, что пользователь существует (внутренний users.id)
+        cur.execute("SELECT 1 FROM users WHERE id = ?", (user_id,))
         if not cur.fetchone():
             return None
 
-        # черновик
+        # создаём «черновик» всегда НОВОЙ строкой
         cur.execute(
-            "INSERT INTO links (user_id, original_url, max_clicks, link, short_host) VALUES (?, ?, ?, ?, ?)",
-            (user_id, original_url, max_clicks, "", ""),
+            """
+            INSERT INTO links (user_id, original_url, max_clicks, clicks, link, short_host, created_at)
+            VALUES (?, ?, ?, 0, '', '', datetime('now','utc'))
+            """,
+            (user_id, original_url, max_clicks),
         )
         link_id = cur.lastrowid
 
-        # ВАЖНО: вычисляем host ОДИН РАЗ
-        host = short_host or _make_short_host(original_url, noise_len=random.randint(5, 8))
+        # вычисляем short_host ровно один раз (если не передан)
+        host = (short_host or _make_short_host(original_url, noise_len=random.randint(5, 8))).strip()
 
-        for _ in range(10):
-            slug = _make_realistic_slug(link_id, noise_len=random.randint(8, 15))
+        # до 12 попыток подобрать уникальный slug
+        for _ in range(12):
+            slug = _make_unique_slug(link_id, noise_len=random.randint(8, 14))
             try:
                 cur.execute(
                     "UPDATE links SET link = ?, short_host = ? WHERE id = ?",
@@ -403,20 +425,26 @@ def _save_link_with_slug(
                 )
                 conn.commit()
                 return slug
-            except sqlite3.IntegrityError:
-                continue
+            except sqlite3.IntegrityError as e:
+                # коллизия по UNIQUE(link) — пробуем ещё раз
+                if "UNIQUE" in str(e).upper():
+                    continue
+                # другая ошибка — откатим строку
+                raise
 
+        # если не повезло — подчистим черновик
         cur.execute("DELETE FROM links WHERE id = ?", (link_id,))
         conn.commit()
         return None
+
     except Exception:
         conn.rollback()
         return None
     finally:
-        cur.close();
+        cur.close()
         conn.close()
 
-_dns_allowed = re.compile(r"[a-z0-9-]")
+_dns_allowed = re.compile(r"[a-z0-9-]")  # 👈 вынес сюда
 
 def _safe_label(s: str, *, max_len: int = 30) -> str:
     """
@@ -528,7 +556,8 @@ async def choose_link_plan(callback: types.CallbackQuery, state: FSMContext):
         f"📌 План: {max_clicks} переход(а/ов)\n"
         f"💰 Стоимость: {_fmt_dec(cost)} USDT (будет списана при создании)\n\n"
         "Пример: https://example.com/page?x=1",
-        parse_mode="HTML"
+        parse_mode="HTML",
+        reply_markup=back_to_menu,
     )
     await callback.answer()
 
