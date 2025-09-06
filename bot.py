@@ -174,7 +174,6 @@ TOPUP_AMOUNTS = (1, 5, 10, 25, 50)
 SUB_REQUIRED_TEXT = (
     "👋 Добро пожаловать!\n\n"
     "Чтобы пользоваться ботом, подпишись на наш официальный канал.\n"
-    "После подписки нажми «✅ Проверить подписку»."
 )
 
 def sub_keyboard() -> InlineKeyboardMarkup:
@@ -355,13 +354,27 @@ def _make_realistic_slug(link_id: int, noise_len: int = 8) -> str:
     noise = "".join(secrets.choice(ALPHABET62) for _ in range(noise_len))
     return core + noise
 
+import re, secrets, string
+from urllib.parse import urlsplit
+
+DOMAIN = "vrf.lat"  # твой основной домен
+
 def _make_short_host(original_url: str, noise_len: int = 6) -> str:
-    from urllib.parse import urlsplit
-    parts = urlsplit(original_url)
-    src_host = parts.netloc.lower().replace(":", "-")  # на всякий случай убираем порты
-    stub = (parts.path or "/").strip("/").split("/", 1)[0] or "link"
-    noise = "-" + "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(noise_len))
-    return f"{src_host}.{stub}{noise}.{DOMAIN}"
+    netloc = urlsplit(original_url).netloc.lower()
+
+    # превращаем все точки и недопустимые символы в дефисы
+    label = netloc.replace(".", "-")
+    label = re.sub(r"[^a-z0-9-]", "-", label)
+    label = re.sub(r"-+", "-", label).strip("-")
+
+    # ограничение 63 символа на DNS-метку — режем основу
+    base_max = 63 - 1 - noise_len  # дефис + шум
+    base = label[:max(1, base_max)]
+
+    noise = "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(noise_len))
+    one_level_label = f"{base}-{noise}".strip("-")[:63]
+
+    return f"{one_level_label}.{DOMAIN}"
 
 def _save_link_with_slug(
     original_url: str,
